@@ -4,20 +4,36 @@
 
 This project implements a simplified search engine capable of:
 
-- indexing documents
-- ranking results
-- retrieving relevant pages
+- Indexing documents
+- Ranking results
+- Retrieving relevant pages
 
-Features
-- inverted index
+## Features
+
+- Inverted index
 - TF-IDF ranking
-- search API
-- simple web interface
+- Search API (Flask)
+- Simple React web interface
 
-Tech Stack
+## Tech Stack
+
 - Python
 - Flask
+- React
 - HTML/CSS
 
-Project Structure
-(data, indexer, search, api, frontend)
+## Project Structure
+
+- `data/` - stores documents collected by crawler  
+- `indexer/` - contains indexing logic (`indexer.py`)  
+- `search/` - search and ranking logic (`search.py`)  
+- `api/` - Flask backend (`app.py`)  
+- `frontend/` - React UI  
+- `crawler/` - bot to fetch webpages (`crawler.py`)  
+
+## How to Run
+
+1. **Crawl pages** (optional):
+```bash
+cd crawler
+python crawler.py
