@@ -4,7 +4,7 @@ import json, re
 app = Flask(__name__)
 
 # Load documents
-with open("data.json") as f:
+with open("../data/data.json") as f:
     docs = json.load(f)
 
 # Simple inverted index
