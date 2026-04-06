@@ -17,12 +17,22 @@ with DATA_PATH.open() as f:
 # Simple inverted index
 index = {}
 doc_terms = []
+suggestion_terms = set()
 
 for i, doc in enumerate(docs):
     words = re.findall(r'\w+', doc["content"].lower())
+    title_words = re.findall(r"\w+", doc["title"].lower())
+    url_words = re.findall(r"\w+", doc["url"].lower())
     doc_terms.append(Counter(words))
-    for word in words:
+    suggestion_terms.update(words)
+    suggestion_terms.update(title_words)
+    suggestion_terms.update(url_words)
+    for word in words + title_words:
         index.setdefault(word, set()).add(i)
+
+sorted_suggestion_terms = sorted(
+    term for term in suggestion_terms if len(term) > 1
+)
 
 
 @app.after_request
@@ -50,13 +60,54 @@ def build_snippet(content, query_terms, max_length=150):
 
     return f"{content[:max_length].strip()}..." if len(content) > max_length else content
 
+
+def tokenize_query(text):
+    return re.findall(r"\w+", text.lower())
+
+
+def build_suggestions(query, limit=6):
+    stripped_query = query.strip().lower()
+    if len(stripped_query) < 2:
+        return []
+
+    query_parts = stripped_query.split()
+    active_fragment = query_parts[-1]
+    leading_terms = query_parts[:-1]
+    suggestions = []
+    seen = set()
+
+    title_matches = [
+        doc["title"]
+        for doc in docs
+        if doc["title"].lower().startswith(stripped_query)
+    ]
+
+    for suggestion in title_matches:
+        if suggestion not in seen:
+            suggestions.append(suggestion)
+            seen.add(suggestion)
+        if len(suggestions) >= limit:
+            return suggestions
+
+    for term in sorted_suggestion_terms:
+        if not term.startswith(active_fragment):
+            continue
+        full_suggestion = " ".join(leading_terms + [term]).strip()
+        if full_suggestion not in seen:
+            suggestions.append(full_suggestion)
+            seen.add(full_suggestion)
+        if len(suggestions) >= limit:
+            break
+
+    return suggestions
+
 @app.route("/search")
 def search():
     query = request.args.get("q", "").lower()
     if not query:
         return jsonify({"results": []})
 
-    query_terms = re.findall(r"\w+", query)
+    query_terms = tokenize_query(query)
     if not query_terms:
         return jsonify({"results": []})
 
@@ -82,6 +133,12 @@ def search():
             "url": doc["url"],
         })
     return jsonify({"results": output})
+
+
+@app.route("/suggest")
+def suggest():
+    query = request.args.get("q", "")
+    return jsonify({"suggestions": build_suggestions(query)})
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
