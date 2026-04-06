@@ -1,1 +1,12 @@
-
+[
+    {
+      "title": "Python Guide",
+      "url": "https://example.com/python",
+      "content": "Python is a programming language used for web development."
+    },
+    {
+      "title": "React Tutorial",
+      "url": "https://example.com/react",
+      "content": "React is a JavaScript library for building user interfaces."
+    }
+  ]
