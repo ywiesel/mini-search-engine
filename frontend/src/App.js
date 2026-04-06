@@ -45,7 +45,10 @@ function App() {
 
   const trimmedQuery = query.trim();
   const visibleSuggestions = useMemo(
-    () => suggestions.filter((suggestion) => suggestion.toLowerCase() !== trimmedQuery.toLowerCase()),
+    () =>
+      suggestions.filter(
+        (suggestion) => suggestion.toLowerCase() !== trimmedQuery.toLowerCase()
+      ),
     [suggestions, trimmedQuery]
   );
 
@@ -136,60 +139,138 @@ function App() {
 
   return (
     <div className="app-shell">
-      <div className="search-card">
-        <p className="eyebrow">Mini Search Engine</p>
-        <h1>Search your indexed pages</h1>
-        <p className="subtitle">
-          Try searches like <span>python</span>, <span>react</span>, or{" "}
-          <span>web development</span>.
-        </p>
-
-        <form className="search-form" onSubmit={handleSearch}>
-          <div className="search-input-wrap">
-            <input
-              type="text"
-              value={query}
-              placeholder="Search..."
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => {
-                window.setTimeout(() => setShowSuggestions(false), 120);
-              }}
-              aria-label="Search query"
-              autoComplete="off"
-            />
-            {showSuggestions && (visibleSuggestions.length > 0 || suggestionsLoading) && (
-              <div className="suggestions-panel">
-                {suggestionsLoading && (
-                  <p className="suggestions-status">Looking up suggestions...</p>
-                )}
-                {!suggestionsLoading &&
-                  visibleSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      className="suggestion-item"
-                      onMouseDown={() => handleSuggestionClick(suggestion)}
-                    >
-                      {highlightMatches(suggestion, query)}
-                    </button>
-                  ))}
-              </div>
-            )}
+      <header className="hero-shell">
+        <nav className="topbar">
+          <div className="brand-mark">
+            <span className="brand-dot" />
+            SkySearch
           </div>
-          <button type="submit" disabled={loading}>
-            {loading ? "Searching..." : "Search"}
-          </button>
-        </form>
+          <div className="topbar-links">
+            <span>Search</span>
+            <span>Index</span>
+            <span>Explore</span>
+          </div>
+        </nav>
 
-        {error && <p className="status-message error">{error}</p>}
-        {!error && loading && <p className="status-message">Searching...</p>}
-        {!loading && !error && query.trim() && results.length === 0 && (
-          <p className="status-message">No results found for "{query.trim()}".</p>
-        )}
+        <div className="hero-grid">
+          <section className="hero-copy">
+            <p className="eyebrow">Landy-inspired search experience</p>
+            <h1>Search your indexed pages with a cleaner, brighter design.</h1>
+            <p className="subtitle">
+              A light blue and white interface for browsing your crawler data,
+              with autocomplete suggestions and highlighted matches built in.
+            </p>
+
+            <div className="hero-actions">
+              <span className="hero-pill">Fast suggestions</span>
+              <span className="hero-pill">Live crawler data</span>
+              <span className="hero-pill">Readable snippets</span>
+            </div>
+          </section>
+
+          <section className="hero-panel">
+            <div className="panel-card">
+              <p className="panel-label">Try a search</p>
+
+              <form className="search-form" onSubmit={handleSearch}>
+                <div className="search-input-wrap">
+                  <input
+                    type="text"
+                    value={query}
+                    placeholder="Search for python, react, docs..."
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setShowSuggestions(true);
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setShowSuggestions(false), 120);
+                    }}
+                    aria-label="Search query"
+                    autoComplete="off"
+                  />
+                  {showSuggestions &&
+                    (visibleSuggestions.length > 0 || suggestionsLoading) && (
+                      <div className="suggestions-panel">
+                        {suggestionsLoading && (
+                          <p className="suggestions-status">
+                            Looking up suggestions...
+                          </p>
+                        )}
+                        {!suggestionsLoading &&
+                          visibleSuggestions.map((suggestion) => (
+                            <button
+                              key={suggestion}
+                              type="button"
+                              className="suggestion-item"
+                              onMouseDown={() =>
+                                handleSuggestionClick(suggestion)
+                              }
+                            >
+                              {highlightMatches(suggestion, query)}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                </div>
+                <button type="submit" disabled={loading}>
+                  {loading ? "Searching..." : "Search"}
+                </button>
+              </form>
+
+              {error && <p className="status-message error">{error}</p>}
+              {!error && loading && (
+                <p className="status-message">Searching...</p>
+              )}
+              {!loading && !error && query.trim() && results.length === 0 && (
+                <p className="status-message">
+                  No results found for "{query.trim()}".
+                </p>
+              )}
+
+              <div className="search-hints">
+                <span>Popular:</span>
+                <button type="button" onClick={() => handleSuggestionClick("python")}>
+                  python
+                </button>
+                <button type="button" onClick={() => handleSuggestionClick("react")}>
+                  react
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSuggestionClick("web development")}
+                >
+                  web development
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </header>
+
+      <section className="features-row">
+        <article className="feature-card">
+          <p className="feature-kicker">Smart</p>
+          <h2>Autocomplete suggestions</h2>
+          <p>Helpful suggestions appear as you type so you can search faster.</p>
+        </article>
+        <article className="feature-card">
+          <p className="feature-kicker">Focused</p>
+          <h2>Highlighted results</h2>
+          <p>Your matching terms are emphasized inside titles and snippets.</p>
+        </article>
+        <article className="feature-card">
+          <p className="feature-kicker">Fresh</p>
+          <h2>Crawler-powered data</h2>
+          <p>Bring in more web pages and search across a growing local index.</p>
+        </article>
+      </section>
+
+      <section className="results-section">
+        <div className="section-heading">
+          <p className="eyebrow">Results</p>
+          <h2>Browse what your engine found</h2>
+        </div>
 
         <ul className="results-list">
           {results.map((result) => (
@@ -202,7 +283,7 @@ function App() {
             </li>
           ))}
         </ul>
-      </div>
+      </section>
     </div>
   );
 }
