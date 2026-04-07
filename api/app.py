@@ -3,6 +3,8 @@ import os
 import re
 from collections import Counter
 from pathlib import Path
+from time import perf_counter
+from urllib.parse import urlparse
 
 from flask import Flask, request, jsonify
 
@@ -34,6 +36,11 @@ sorted_suggestion_terms = sorted(
     term for term in suggestion_terms if len(term) > 1
 )
 
+domain_counts = Counter()
+for doc in docs:
+    domain = urlparse(doc["url"]).netloc or "unknown"
+    domain_counts[domain] += 1
+
 
 @app.after_request
 def add_cors_headers(response):
@@ -63,6 +70,27 @@ def build_snippet(content, query_terms, max_length=150):
 
 def tokenize_query(text):
     return re.findall(r"\w+", text.lower())
+
+
+def score_document(doc_id, query_terms):
+    doc = docs[doc_id]
+    title = doc["title"].lower()
+    url = doc["url"].lower()
+    content_terms = doc_terms[doc_id]
+
+    term_frequency_score = sum(content_terms[term] for term in query_terms)
+    coverage_score = sum(1 for term in query_terms if content_terms[term] > 0)
+    title_score = sum(title.count(term) for term in query_terms) * 4
+    url_score = sum(url.count(term) for term in query_terms) * 2
+    exact_title_bonus = 6 if " ".join(query_terms) in title else 0
+
+    return (
+        title_score
+        + url_score
+        + exact_title_bonus
+        + term_frequency_score
+        + (coverage_score * 3)
+    )
 
 
 def build_suggestions(query, limit=6):
@@ -103,13 +131,35 @@ def build_suggestions(query, limit=6):
 
 @app.route("/search")
 def search():
+    started_at = perf_counter()
     query = request.args.get("q", "").lower()
+    page = max(request.args.get("page", default=1, type=int), 1)
+    page_size = min(max(request.args.get("page_size", default=5, type=int), 1), 20)
+
     if not query:
-        return jsonify({"results": []})
+        return jsonify(
+            {
+                "results": [],
+                "total": 0,
+                "searchTimeMs": 0,
+                "page": page,
+                "pageSize": page_size,
+                "totalPages": 0,
+            }
+        )
 
     query_terms = tokenize_query(query)
     if not query_terms:
-        return jsonify({"results": []})
+        return jsonify(
+            {
+                "results": [],
+                "total": 0,
+                "searchTimeMs": 0,
+                "page": page,
+                "pageSize": page_size,
+                "totalPages": 0,
+            }
+        )
 
     matched_doc_ids = set()
     for term in query_terms:
@@ -118,27 +168,64 @@ def search():
     ranked_doc_ids = sorted(
         matched_doc_ids,
         key=lambda doc_id: (
+            score_document(doc_id, query_terms),
             sum(doc_terms[doc_id][term] for term in query_terms),
-            sum(1 for term in query_terms if doc_terms[doc_id][term] > 0),
         ),
         reverse=True,
     )
 
+    total = len(ranked_doc_ids)
+    total_pages = (total + page_size - 1) // page_size
+    start_index = (page - 1) * page_size
+    end_index = start_index + page_size
+    paginated_doc_ids = ranked_doc_ids[start_index:end_index]
+
     output = []
-    for doc_id in ranked_doc_ids:
+    for doc_id in paginated_doc_ids:
         doc = docs[doc_id]
         output.append({
             "title": doc["title"],
             "snippet": build_snippet(doc["content"], query_terms),
             "url": doc["url"],
+            "score": score_document(doc_id, query_terms),
         })
-    return jsonify({"results": output})
+
+    search_time_ms = round((perf_counter() - started_at) * 1000, 2)
+
+    return jsonify(
+        {
+            "results": output,
+            "total": total,
+            "searchTimeMs": search_time_ms,
+            "page": page,
+            "pageSize": page_size,
+            "totalPages": total_pages,
+        }
+    )
 
 
 @app.route("/suggest")
 def suggest():
     query = request.args.get("q", "")
     return jsonify({"suggestions": build_suggestions(query)})
+
+
+@app.route("/stats")
+def stats():
+    top_domains = [
+        {"domain": domain, "count": count}
+        for domain, count in domain_counts.most_common(5)
+    ]
+
+    return jsonify(
+        {
+            "totalDocuments": len(docs),
+            "uniqueTerms": len(index),
+            "uniqueDomains": len(domain_counts),
+            "lastIndexed": DATA_PATH.stat().st_mtime,
+            "topDomains": top_domains,
+        }
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5050))
