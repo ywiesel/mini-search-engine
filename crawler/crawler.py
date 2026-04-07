@@ -40,6 +40,55 @@ def extract_page_text(soup):
     return text
 
 
+def extract_images(soup, base_url, page_title):
+    discovered = []
+    seen = set()
+
+    for meta_selector in [
+        {"property": "og:image"},
+        {"name": "twitter:image"},
+    ]:
+        tag = soup.find("meta", attrs=meta_selector)
+        if not tag or not tag.get("content"):
+            continue
+
+        image_url = normalize_url(urljoin(base_url, tag["content"]))
+        if image_url in seen:
+          continue
+
+        seen.add(image_url)
+        discovered.append(
+            {
+                "url": image_url,
+                "alt": page_title,
+                "sourcePage": base_url,
+            }
+        )
+
+    for image in soup.find_all("img", src=True):
+        image_url = normalize_url(urljoin(base_url, image["src"]))
+        if image_url in seen:
+            continue
+
+        alt_text = image.get("alt") or image.get("title") or page_title
+        if not alt_text:
+            alt_text = page_title
+
+        seen.add(image_url)
+        discovered.append(
+            {
+                "url": image_url,
+                "alt": alt_text.strip(),
+                "sourcePage": base_url,
+            }
+        )
+
+        if len(discovered) >= 16:
+            break
+
+    return discovered
+
+
 def should_visit(url, allowed_domains):
     parsed = urlparse(url)
     return (
@@ -87,6 +136,7 @@ def crawl(seed_urls, max_pages=MAX_PAGES, max_depth=1):
                 "url": current_url,
                 "title": title,
                 "content": content,
+                "images": extract_images(soup, current_url, title),
             }
         )
         print(f"Crawled ({len(crawled_pages)}/{max_pages}): {current_url}")

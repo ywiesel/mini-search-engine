@@ -20,6 +20,9 @@ with DATA_PATH.open() as f:
 index = {}
 doc_terms = []
 suggestion_terms = set()
+image_records = []
+image_index = {}
+image_terms = []
 
 for i, doc in enumerate(docs):
     words = re.findall(r'\w+', doc["content"].lower())
@@ -31,6 +34,32 @@ for i, doc in enumerate(docs):
     suggestion_terms.update(url_words)
     for word in words + title_words:
         index.setdefault(word, set()).add(i)
+
+    for image in doc.get("images", []):
+        image_record = {
+            "url": image["url"],
+            "alt": image.get("alt", ""),
+            "sourcePage": image.get("sourcePage", doc["url"]),
+            "pageTitle": doc["title"],
+        }
+        image_id = len(image_records)
+        image_records.append(image_record)
+
+        tokens = re.findall(
+            r"\w+",
+            " ".join(
+                [
+                    image_record["alt"],
+                    image_record["pageTitle"],
+                    image_record["sourcePage"],
+                    image_record["url"],
+                ]
+            ).lower(),
+        )
+        image_terms.append(Counter(tokens))
+
+        for token in tokens:
+            image_index.setdefault(token, set()).add(image_id)
 
 sorted_suggestion_terms = sorted(
     term for term in suggestion_terms if len(term) > 1
@@ -93,6 +122,22 @@ def score_document(doc_id, query_terms):
     )
 
 
+def score_image(image_id, query_terms):
+    image = image_records[image_id]
+    image_counter = image_terms[image_id]
+    alt_text = image["alt"].lower()
+    page_title = image["pageTitle"].lower()
+    source_page = image["sourcePage"].lower()
+
+    term_frequency_score = sum(image_counter[term] for term in query_terms)
+    alt_score = sum(alt_text.count(term) for term in query_terms) * 5
+    page_title_score = sum(page_title.count(term) for term in query_terms) * 3
+    source_score = sum(source_page.count(term) for term in query_terms) * 2
+    coverage_score = sum(1 for term in query_terms if image_counter[term] > 0)
+
+    return alt_score + page_title_score + source_score + term_frequency_score + (coverage_score * 2)
+
+
 def build_suggestions(query, limit=6):
     stripped_query = query.strip().lower()
     if len(stripped_query) < 2:
@@ -133,6 +178,9 @@ def build_suggestions(query, limit=6):
 def search():
     started_at = perf_counter()
     query = request.args.get("q", "").lower()
+    mode = request.args.get("mode", "text").lower()
+    if mode not in {"text", "images"}:
+        mode = "text"
     page = max(request.args.get("page", default=1, type=int), 1)
     page_size = min(max(request.args.get("page_size", default=5, type=int), 1), 20)
 
@@ -145,6 +193,7 @@ def search():
                 "page": page,
                 "pageSize": page_size,
                 "totalPages": 0,
+                "mode": mode,
             }
         )
 
@@ -158,6 +207,54 @@ def search():
                 "page": page,
                 "pageSize": page_size,
                 "totalPages": 0,
+                "mode": mode,
+            }
+        )
+
+    if mode == "images":
+        matched_image_ids = set()
+        for term in query_terms:
+            matched_image_ids.update(image_index.get(term, set()))
+
+        ranked_image_ids = sorted(
+            matched_image_ids,
+            key=lambda image_id: (
+                score_image(image_id, query_terms),
+                sum(image_terms[image_id][term] for term in query_terms),
+            ),
+            reverse=True,
+        )
+
+        total = len(ranked_image_ids)
+        total_pages = (total + page_size - 1) // page_size
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        paginated_image_ids = ranked_image_ids[start_index:end_index]
+
+        output = []
+        for image_id in paginated_image_ids:
+            image = image_records[image_id]
+            output.append(
+                {
+                    "imageUrl": image["url"],
+                    "title": image["alt"] or image["pageTitle"],
+                    "pageTitle": image["pageTitle"],
+                    "sourcePage": image["sourcePage"],
+                    "score": score_image(image_id, query_terms),
+                }
+            )
+
+        search_time_ms = round((perf_counter() - started_at) * 1000, 2)
+
+        return jsonify(
+            {
+                "results": output,
+                "total": total,
+                "searchTimeMs": search_time_ms,
+                "page": page,
+                "pageSize": page_size,
+                "totalPages": total_pages,
+                "mode": mode,
             }
         )
 
@@ -200,6 +297,7 @@ def search():
             "page": page,
             "pageSize": page_size,
             "totalPages": total_pages,
+            "mode": mode,
         }
     )
 
@@ -220,6 +318,7 @@ def stats():
     return jsonify(
         {
             "totalDocuments": len(docs),
+            "totalImages": len(image_records),
             "uniqueTerms": len(index),
             "uniqueDomains": len(domain_counts),
             "lastIndexed": DATA_PATH.stat().st_mtime,

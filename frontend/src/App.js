@@ -37,6 +37,8 @@ function App() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [searchMode, setSearchMode] = useState("text");
+  const [activeView, setActiveView] = useState("search");
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -52,6 +54,7 @@ function App() {
   });
   const [stats, setStats] = useState({
     totalDocuments: 0,
+    totalImages: 0,
     uniqueTerms: 0,
     uniqueDomains: 0,
     lastIndexed: null,
@@ -91,6 +94,7 @@ function App() {
         if (!ignore) {
           setStats({
             totalDocuments: 0,
+            totalImages: 0,
             uniqueTerms: 0,
             uniqueDomains: 0,
             lastIndexed: null,
@@ -149,7 +153,7 @@ function App() {
     };
   }, [apiBaseUrl, trimmedQuery]);
 
-  const runSearch = async (nextQuery, nextPage = 1) => {
+  const runSearch = async (nextQuery, nextPage = 1, nextMode = searchMode) => {
     const normalizedQuery = nextQuery.trim();
 
     if (!normalizedQuery) {
@@ -173,7 +177,7 @@ function App() {
 
     try {
       const res = await fetch(
-        `${apiBaseUrl}/search?q=${encodeURIComponent(normalizedQuery)}&page=${nextPage}&page_size=${PAGE_SIZE}`
+        `${apiBaseUrl}/search?q=${encodeURIComponent(normalizedQuery)}&page=${nextPage}&page_size=${PAGE_SIZE}&mode=${encodeURIComponent(nextMode)}`
       );
       if (!res.ok) {
         throw new Error(`Search request failed with status ${res.status}`);
@@ -217,6 +221,28 @@ function App() {
     await runSearch(submittedQuery || query, nextPage);
   };
 
+  const handleModeChange = async (nextMode) => {
+    if (nextMode === searchMode) {
+      return;
+    }
+
+    setSearchMode(nextMode);
+
+    const activeQuery = (submittedQuery || query).trim();
+    if (activeQuery) {
+      await runSearch(activeQuery, 1, nextMode);
+    } else {
+      setResults([]);
+      setSearchMeta({
+        total: 0,
+        searchTimeMs: 0,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        totalPages: 0,
+      });
+    }
+  };
+
   const handleQueryKeyDown = async (event) => {
     if (event.key === "ArrowDown" && visibleSuggestions.length > 0) {
       event.preventDefault();
@@ -256,6 +282,10 @@ function App() {
     searchMeta.total > 0
       ? Math.min(searchMeta.page * searchMeta.pageSize, searchMeta.total)
       : 0;
+  const searchPlaceholder =
+    searchMode === "images"
+      ? "Search indexed images by alt text, page title, or URL..."
+      : "Search docs, frameworks, guides, or domains...";
   const formattedIndexedDate = stats.lastIndexed
     ? new Date(stats.lastIndexed * 1000).toLocaleString()
     : "Unavailable";
@@ -269,227 +299,279 @@ function App() {
             Northstar Search
           </div>
           <div className="topbar-links">
-            <span>Search Workspace</span>
+            <button
+              type="button"
+              className={activeView === "search" ? "active" : ""}
+              onClick={() => setActiveView("search")}
+            >
+              Search Workspace
+            </button>
             <span>Relevance</span>
-            <span>Analytics</span>
+            <button
+              type="button"
+              className={activeView === "analytics" ? "active" : ""}
+              onClick={() => setActiveView("analytics")}
+            >
+              Analytics
+            </button>
           </div>
         </nav>
-
-        <div className="hero-grid">
-          <section className="hero-copy">
-            <p className="eyebrow">Independent Search Platform</p>
-            <h1>Search your own indexed web content with clarity and control.</h1>
-            <p className="subtitle">
-              Northstar Search gives your crawler data a professional interface:
-              fast lookup, ranked results, index analytics, and a workflow that
-              feels built for real search operations.
-            </p>
-
-            <div className="hero-actions">
-              <span className="hero-pill">Fast suggestions</span>
-              <span className="hero-pill">Weighted ranking</span>
-              <span className="hero-pill">Index visibility</span>
-            </div>
-          </section>
-
-          <section className="hero-panel">
-            <div className="panel-card">
-              <p className="panel-label">Search the index</p>
-
-              <form className="search-form" onSubmit={handleSearch}>
-                <div className="search-input-wrap">
-                  <input
-                    type="text"
-                    value={query}
-                    placeholder="Search docs, frameworks, guides, or domains..."
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      setShowSuggestions(true);
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    onBlur={() => {
-                      window.setTimeout(() => setShowSuggestions(false), 120);
-                    }}
-                    onKeyDown={handleQueryKeyDown}
-                    aria-label="Search query"
-                    aria-expanded={showSuggestions}
-                    aria-controls="search-suggestions"
-                    autoComplete="off"
-                  />
-                  {showSuggestions &&
-                    (visibleSuggestions.length > 0 || suggestionsLoading) && (
-                      <div className="suggestions-panel" id="search-suggestions">
-                        {suggestionsLoading && (
-                          <p className="suggestions-status">
-                            Looking up suggestions...
-                          </p>
-                        )}
-                        {!suggestionsLoading &&
-                          visibleSuggestions.map((suggestion, index) => (
-                            <button
-                              key={suggestion}
-                              type="button"
-                              className={`suggestion-item${
-                                selectedSuggestionIndex === index ? " active" : ""
-                              }`}
-                              onMouseDown={() =>
-                                handleSuggestionClick(suggestion)
-                              }
-                            >
-                              {highlightMatches(suggestion, query)}
-                            </button>
-                          ))}
-                      </div>
-                    )}
-                </div>
-                <button type="submit" disabled={loading}>
-                  {loading ? "Searching..." : "Search"}
-                </button>
-              </form>
-
-              {error && <p className="status-message error">{error}</p>}
-              {!error && loading && (
-                <p className="status-message">Searching...</p>
-              )}
-              {!loading && !error && query.trim() && results.length === 0 && (
-                <p className="status-message">
-                  No results found for "{query.trim()}".
+        {activeView === "search" ? (
+          <>
+            <div className="hero-grid">
+              <section className="hero-copy">
+                <p className="eyebrow">Independent Search Platform</p>
+                <h1>Search your own indexed web content with clarity and control.</h1>
+                <p className="subtitle">
+                  Northstar Search gives your crawler data a professional interface:
+                  fast lookup, ranked results, index analytics, and a workflow that
+                  feels built for real search operations.
                 </p>
-              )}
 
-              {(submittedQuery || loading) && (
-                <div className="search-meta" aria-live="polite">
-                  <span>
-                    {loading
-                      ? "Searching your index..."
-                      : `${searchMeta.total} result${searchMeta.total === 1 ? "" : "s"} found`}
-                  </span>
-                  {!loading && searchMeta.total > 0 && (
-                    <span>in {searchMeta.searchTimeMs} ms</span>
-                  )}
+                <div className="hero-actions">
+                  <span className="hero-pill">Fast suggestions</span>
+                  <span className="hero-pill">Weighted ranking</span>
+                  <span className="hero-pill">Index visibility</span>
                 </div>
-              )}
+              </section>
 
-              <div className="search-hints">
-                <span>Popular:</span>
-                <button type="button" onClick={() => handleSuggestionClick("python")}>
-                  python
-                </button>
-                <button type="button" onClick={() => handleSuggestionClick("react")}>
-                  react
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSuggestionClick("web development")}
-                >
-                  web development
-                </button>
-              </div>
+              <section className="hero-panel">
+                <div className="panel-card">
+                  <p className="panel-label">Search the index</p>
 
-              {results.length > 0 && (
-                <section className="results-section panel-results">
-                  <div className="section-heading">
-                    <p className="eyebrow">Results</p>
-                    <h2>Browse what your engine found</h2>
-                    <p className="results-range">
-                      Showing {firstResultIndex}-{lastResultIndex} of {searchMeta.total}
-                    </p>
+                  <div className="search-mode-switch" role="tablist" aria-label="Search type">
+                    <button
+                      type="button"
+                      className={`mode-chip${searchMode === "text" ? " active" : ""}`}
+                      onClick={() => handleModeChange("text")}
+                    >
+                      Web
+                    </button>
+                    <button
+                      type="button"
+                      className={`mode-chip${searchMode === "images" ? " active" : ""}`}
+                      onClick={() => handleModeChange("images")}
+                    >
+                      Images
+                    </button>
                   </div>
 
-                  <ul className="results-list">
-                    {results.map((result) => (
-                      <li key={result.url} className="result-card">
-                        <a href={result.url} target="_blank" rel="noreferrer">
-                          {highlightMatches(result.title, submittedQuery)}
-                        </a>
-                        <p>{highlightMatches(result.snippet, submittedQuery)}</p>
-                        <div className="result-meta">
-                          <span>{result.url}</span>
-                          <span>Score {result.score}</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <form className="search-form" onSubmit={handleSearch}>
+                    <div className="search-input-wrap">
+                      <input
+                        type="text"
+                        value={query}
+                        placeholder={searchPlaceholder}
+                        onChange={(e) => {
+                          setQuery(e.target.value);
+                          setShowSuggestions(true);
+                        }}
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={() => {
+                          window.setTimeout(() => setShowSuggestions(false), 120);
+                        }}
+                        onKeyDown={handleQueryKeyDown}
+                        aria-label="Search query"
+                        aria-expanded={showSuggestions}
+                        aria-controls="search-suggestions"
+                        autoComplete="off"
+                      />
+                      {showSuggestions &&
+                        (visibleSuggestions.length > 0 || suggestionsLoading) && (
+                          <div className="suggestions-panel" id="search-suggestions">
+                            {suggestionsLoading && (
+                              <p className="suggestions-status">
+                                Looking up suggestions...
+                              </p>
+                            )}
+                            {!suggestionsLoading &&
+                              visibleSuggestions.map((suggestion, index) => (
+                                <button
+                                  key={suggestion}
+                                  type="button"
+                                  className={`suggestion-item${
+                                    selectedSuggestionIndex === index ? " active" : ""
+                                  }`}
+                                  onMouseDown={() =>
+                                    handleSuggestionClick(suggestion)
+                                  }
+                                >
+                                  {highlightMatches(suggestion, query)}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                    </div>
+                    <button type="submit" disabled={loading}>
+                      {loading ? "Searching..." : "Search"}
+                    </button>
+                  </form>
 
-                  {searchMeta.totalPages > 1 && (
-                    <div className="pagination-bar">
-                      <button
-                        type="button"
-                        onClick={() => handlePageChange(searchMeta.page - 1)}
-                        disabled={loading || searchMeta.page === 1}
-                      >
-                        Previous
-                      </button>
+                  {error && <p className="status-message error">{error}</p>}
+                  {!error && loading && (
+                    <p className="status-message">Searching...</p>
+                  )}
+                  {!loading && !error && query.trim() && results.length === 0 && (
+                    <p className="status-message">
+                      {searchMode === "images"
+                        ? stats.totalImages === 0
+                          ? `No indexed images are available yet. Re-run the crawler with network access, then try "${query.trim()}" again.`
+                          : `No image results found for "${query.trim()}". Re-run the crawler to index more page images.`
+                        : `No results found for "${query.trim()}".`}
+                    </p>
+                  )}
+
+                  {(submittedQuery || loading) && (
+                    <div className="search-meta" aria-live="polite">
                       <span>
-                        Page {searchMeta.page} of {searchMeta.totalPages}
+                        {loading
+                          ? "Searching your index..."
+                          : `${searchMeta.total} result${searchMeta.total === 1 ? "" : "s"} found`}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => handlePageChange(searchMeta.page + 1)}
-                        disabled={loading || searchMeta.page === searchMeta.totalPages}
-                      >
-                        Next
-                      </button>
+                      {!loading && searchMeta.total > 0 && (
+                        <span>in {searchMeta.searchTimeMs} ms</span>
+                      )}
                     </div>
                   )}
-                </section>
-              )}
+
+                  <div className="search-hints">
+                    <span>Popular:</span>
+                    <button type="button" onClick={() => handleSuggestionClick("python")}>
+                      python
+                    </button>
+                    <button type="button" onClick={() => handleSuggestionClick("react")}>
+                      react
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestionClick("web development")}
+                    >
+                      web development
+                    </button>
+                  </div>
+
+                  {results.length > 0 && (
+                    <section className="results-section panel-results">
+                      <div className="section-heading">
+                        <p className="eyebrow">{searchMode === "images" ? "Image Results" : "Results"}</p>
+                        <h2>
+                          {searchMode === "images"
+                            ? "Browse indexed images from your search data"
+                            : "Browse what your engine found"}
+                        </h2>
+                        <p className="results-range">
+                          Showing {firstResultIndex}-{lastResultIndex} of {searchMeta.total}
+                        </p>
+                      </div>
+
+                      {searchMode === "images" ? (
+                        <ul className="image-results-grid">
+                          {results.map((result) => (
+                            <li key={result.imageUrl} className="image-card">
+                              <a href={result.sourcePage} target="_blank" rel="noreferrer">
+                                <img
+                                  src={result.imageUrl}
+                                  alt={result.title}
+                                  loading="lazy"
+                                />
+                              </a>
+                              <div className="image-card-body">
+                                <a href={result.sourcePage} target="_blank" rel="noreferrer">
+                                  {highlightMatches(result.title, submittedQuery)}
+                                </a>
+                                <p>{highlightMatches(result.pageTitle, submittedQuery)}</p>
+                                <div className="result-meta">
+                                  <span>{result.sourcePage}</span>
+                                  <span>Score {result.score}</span>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <ul className="results-list">
+                          {results.map((result) => (
+                            <li key={result.url} className="result-card">
+                              <a href={result.url} target="_blank" rel="noreferrer">
+                                {highlightMatches(result.title, submittedQuery)}
+                              </a>
+                              <p>{highlightMatches(result.snippet, submittedQuery)}</p>
+                              <div className="result-meta">
+                                <span>{result.url}</span>
+                                <span>Score {result.score}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {searchMeta.totalPages > 1 && (
+                        <div className="pagination-bar">
+                          <button
+                            type="button"
+                            onClick={() => handlePageChange(searchMeta.page - 1)}
+                            disabled={loading || searchMeta.page === 1}
+                          >
+                            Previous
+                          </button>
+                          <span>
+                            Page {searchMeta.page} of {searchMeta.totalPages}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handlePageChange(searchMeta.page + 1)}
+                            disabled={loading || searchMeta.page === searchMeta.totalPages}
+                          >
+                            Next
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  )}
+                </div>
+              </section>
+            </div>
+          </>
+        ) : (
+          <section className="analytics-view">
+            <div className="dashboard-header">
+              <p className="eyebrow">Index Dashboard</p>
+              <h2>Monitor the health of your search system</h2>
+              <p className="dashboard-subtitle">Last indexed: {formattedIndexedDate}</p>
+            </div>
+
+            <div className="dashboard-grid">
+              <article className="dashboard-card">
+                <p className="dashboard-label">Total pages</p>
+                <strong>{stats.totalDocuments}</strong>
+              </article>
+              <article className="dashboard-card">
+                <p className="dashboard-label">Unique terms</p>
+                <strong>{stats.uniqueTerms}</strong>
+              </article>
+              <article className="dashboard-card">
+                <p className="dashboard-label">Images</p>
+                <strong>{stats.totalImages}</strong>
+              </article>
+              <article className="dashboard-card">
+                <p className="dashboard-label">Domains</p>
+                <strong>{stats.uniqueDomains}</strong>
+              </article>
+              <article className="dashboard-card dashboard-list-card">
+                <p className="dashboard-label">Top domains</p>
+                <ul className="domain-list">
+                  {stats.topDomains.map((entry) => (
+                    <li key={entry.domain}>
+                      <span>{entry.domain}</span>
+                      <strong>{entry.count}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </article>
             </div>
           </section>
-        </div>
+        )}
       </header>
-
-      <section className="features-row">
-        <article className="feature-card">
-          <p className="feature-kicker">Coverage</p>
-          <h2>{stats.totalDocuments} searchable pages</h2>
-          <p>Your search workspace is backed by a real document index instead of static sample content.</p>
-        </article>
-        <article className="feature-card">
-          <p className="feature-kicker">Relevance</p>
-          <h2>{stats.uniqueTerms} unique terms</h2>
-          <p>Query matching is stronger because the engine can score against a deeper vocabulary set.</p>
-        </article>
-        <article className="feature-card">
-          <p className="feature-kicker">Source Mix</p>
-          <h2>{stats.uniqueDomains} indexed domains</h2>
-          <p>Results come from multiple indexed sources, giving the product a broader and more useful search surface.</p>
-        </article>
-      </section>
-
-      <section className="dashboard-section">
-        <div className="dashboard-header">
-          <p className="eyebrow">Index Dashboard</p>
-          <h2>Monitor the health of your search system</h2>
-          <p className="dashboard-subtitle">Last indexed: {formattedIndexedDate}</p>
-        </div>
-
-        <div className="dashboard-grid">
-          <article className="dashboard-card">
-            <p className="dashboard-label">Total pages</p>
-            <strong>{stats.totalDocuments}</strong>
-          </article>
-          <article className="dashboard-card">
-            <p className="dashboard-label">Unique terms</p>
-            <strong>{stats.uniqueTerms}</strong>
-          </article>
-          <article className="dashboard-card">
-            <p className="dashboard-label">Domains</p>
-            <strong>{stats.uniqueDomains}</strong>
-          </article>
-          <article className="dashboard-card dashboard-list-card">
-            <p className="dashboard-label">Top domains</p>
-            <ul className="domain-list">
-              {stats.topDomains.map((entry) => (
-                <li key={entry.domain}>
-                  <span>{entry.domain}</span>
-                  <strong>{entry.count}</strong>
-                </li>
-              ))}
-            </ul>
-          </article>
-        </div>
-      </section>
 
     </div>
   );

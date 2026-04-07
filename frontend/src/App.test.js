@@ -10,6 +10,7 @@ test('renders search heading', () => {
           url.includes('/stats')
             ? {
                 totalDocuments: 3,
+                totalImages: 6,
                 uniqueTerms: 120,
                 uniqueDomains: 2,
                 lastIndexed: 1712500000,
