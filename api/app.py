@@ -11,10 +11,65 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "data.json"
+RELEVANCE_PATH = Path(__file__).resolve().parents[1] / "data" / "relevance.json"
+
+DEFAULT_RELEVANCE_SETTINGS = {
+    "web": {
+        "titleWeight": 4,
+        "urlWeight": 2,
+        "contentWeight": 1,
+        "coverageBonus": 3,
+        "exactTitleBonus": 6,
+    },
+    "images": {
+        "altWeight": 5,
+        "pageTitleWeight": 3,
+        "sourceUrlWeight": 2,
+        "imageContentWeight": 1,
+        "imageCoverageBonus": 2,
+    },
+}
+
+
+def load_relevance_settings():
+    if not RELEVANCE_PATH.exists():
+        return json.loads(json.dumps(DEFAULT_RELEVANCE_SETTINGS))
+
+    with RELEVANCE_PATH.open() as file:
+        stored = json.load(file)
+
+    settings = json.loads(json.dumps(DEFAULT_RELEVANCE_SETTINGS))
+    for section, values in settings.items():
+        for key in values:
+            incoming_value = stored.get(section, {}).get(key)
+            if isinstance(incoming_value, (int, float)):
+                values[key] = incoming_value
+    return settings
+
+
+def save_relevance_settings(settings):
+    RELEVANCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with RELEVANCE_PATH.open("w") as file:
+        json.dump(settings, file, indent=2)
+
+
+def normalize_relevance_settings(payload):
+    normalized = json.loads(json.dumps(DEFAULT_RELEVANCE_SETTINGS))
+    payload = payload or {}
+
+    for section, values in normalized.items():
+        incoming_section = payload.get(section, {})
+        for key, default_value in values.items():
+            incoming_value = incoming_section.get(key, default_value)
+            if isinstance(incoming_value, (int, float)):
+                values[key] = max(0, min(float(incoming_value), 20))
+    return normalized
 
 # Load documents
 with DATA_PATH.open() as f:
     docs = json.load(f)
+
+relevance_settings = load_relevance_settings()
 
 # Simple inverted index
 index = {}
@@ -75,7 +130,7 @@ for doc in docs:
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return response
 
 
@@ -106,19 +161,31 @@ def score_document(doc_id, query_terms):
     title = doc["title"].lower()
     url = doc["url"].lower()
     content_terms = doc_terms[doc_id]
+    web_settings = relevance_settings["web"]
 
-    term_frequency_score = sum(content_terms[term] for term in query_terms)
+    term_frequency_score = (
+        sum(content_terms[term] for term in query_terms)
+        * web_settings["contentWeight"]
+    )
     coverage_score = sum(1 for term in query_terms if content_terms[term] > 0)
-    title_score = sum(title.count(term) for term in query_terms) * 4
-    url_score = sum(url.count(term) for term in query_terms) * 2
-    exact_title_bonus = 6 if " ".join(query_terms) in title else 0
+    title_score = (
+        sum(title.count(term) for term in query_terms)
+        * web_settings["titleWeight"]
+    )
+    url_score = (
+        sum(url.count(term) for term in query_terms)
+        * web_settings["urlWeight"]
+    )
+    exact_title_bonus = (
+        web_settings["exactTitleBonus"] if " ".join(query_terms) in title else 0
+    )
 
     return (
         title_score
         + url_score
         + exact_title_bonus
         + term_frequency_score
-        + (coverage_score * 3)
+        + (coverage_score * web_settings["coverageBonus"])
     )
 
 
@@ -128,14 +195,33 @@ def score_image(image_id, query_terms):
     alt_text = image["alt"].lower()
     page_title = image["pageTitle"].lower()
     source_page = image["sourcePage"].lower()
+    image_settings = relevance_settings["images"]
 
-    term_frequency_score = sum(image_counter[term] for term in query_terms)
-    alt_score = sum(alt_text.count(term) for term in query_terms) * 5
-    page_title_score = sum(page_title.count(term) for term in query_terms) * 3
-    source_score = sum(source_page.count(term) for term in query_terms) * 2
+    term_frequency_score = (
+        sum(image_counter[term] for term in query_terms)
+        * image_settings["imageContentWeight"]
+    )
+    alt_score = (
+        sum(alt_text.count(term) for term in query_terms)
+        * image_settings["altWeight"]
+    )
+    page_title_score = (
+        sum(page_title.count(term) for term in query_terms)
+        * image_settings["pageTitleWeight"]
+    )
+    source_score = (
+        sum(source_page.count(term) for term in query_terms)
+        * image_settings["sourceUrlWeight"]
+    )
     coverage_score = sum(1 for term in query_terms if image_counter[term] > 0)
 
-    return alt_score + page_title_score + source_score + term_frequency_score + (coverage_score * 2)
+    return (
+        alt_score
+        + page_title_score
+        + source_score
+        + term_frequency_score
+        + (coverage_score * image_settings["imageCoverageBonus"])
+    )
 
 
 def build_suggestions(query, limit=6):
@@ -306,6 +392,23 @@ def search():
 def suggest():
     query = request.args.get("q", "")
     return jsonify({"suggestions": build_suggestions(query)})
+
+
+@app.route("/relevance", methods=["GET", "POST"])
+def relevance():
+    global relevance_settings
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        relevance_settings = normalize_relevance_settings(payload.get("weights"))
+        save_relevance_settings(relevance_settings)
+
+    return jsonify(
+        {
+            "weights": relevance_settings,
+            "defaults": DEFAULT_RELEVANCE_SETTINGS,
+        }
+    )
 
 
 @app.route("/stats")

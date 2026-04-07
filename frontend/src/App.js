@@ -2,6 +2,79 @@ import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const PAGE_SIZE = 5;
+const EMPTY_RELEVANCE_SETTINGS = {
+  web: {
+    titleWeight: 0,
+    urlWeight: 0,
+    contentWeight: 0,
+    coverageBonus: 0,
+    exactTitleBonus: 0,
+  },
+  images: {
+    altWeight: 0,
+    pageTitleWeight: 0,
+    sourceUrlWeight: 0,
+    imageContentWeight: 0,
+    imageCoverageBonus: 0,
+  },
+};
+
+const RELEVANCE_FIELDS = {
+  web: [
+    {
+      key: "titleWeight",
+      label: "Title weight",
+      description: "Boost pages when the query appears in the page title.",
+    },
+    {
+      key: "urlWeight",
+      label: "URL weight",
+      description: "Boost pages when the query appears in the page URL.",
+    },
+    {
+      key: "contentWeight",
+      label: "Content weight",
+      description: "Control how much repeated mentions in body text matter.",
+    },
+    {
+      key: "coverageBonus",
+      label: "Coverage bonus",
+      description: "Reward pages that match more of the query terms.",
+    },
+    {
+      key: "exactTitleBonus",
+      label: "Exact title bonus",
+      description: "Give extra points when the full query appears in the title.",
+    },
+  ],
+  images: [
+    {
+      key: "altWeight",
+      label: "Alt text weight",
+      description: "Boost images whose alt text matches the query.",
+    },
+    {
+      key: "pageTitleWeight",
+      label: "Page title weight",
+      description: "Boost images from pages with matching titles.",
+    },
+    {
+      key: "sourceUrlWeight",
+      label: "Source URL weight",
+      description: "Boost images whose source page URL matches the query.",
+    },
+    {
+      key: "imageContentWeight",
+      label: "Image content weight",
+      description: "Control term frequency impact across image metadata.",
+    },
+    {
+      key: "imageCoverageBonus",
+      label: "Image coverage bonus",
+      description: "Reward images matching more query terms.",
+    },
+  ],
+};
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,9 +115,13 @@ function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [relevanceLoading, setRelevanceLoading] = useState(false);
+  const [relevanceSaving, setRelevanceSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [error, setError] = useState("");
+  const [relevanceError, setRelevanceError] = useState("");
+  const [relevanceMessage, setRelevanceMessage] = useState("");
   const [searchMeta, setSearchMeta] = useState({
     total: 0,
     searchTimeMs: 0,
@@ -60,6 +137,12 @@ function App() {
     lastIndexed: null,
     topDomains: [],
   });
+  const [relevanceDefaults, setRelevanceDefaults] = useState(
+    EMPTY_RELEVANCE_SETTINGS
+  );
+  const [relevanceSettings, setRelevanceSettings] = useState(
+    EMPTY_RELEVANCE_SETTINGS
+  );
 
   const apiBaseUrl = process.env.REACT_APP_API_URL || "http://127.0.0.1:5050";
 
@@ -105,6 +188,44 @@ function App() {
     };
 
     fetchStats();
+
+    return () => {
+      ignore = true;
+    };
+  }, [apiBaseUrl]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const fetchRelevance = async () => {
+      setRelevanceLoading(true);
+      setRelevanceError("");
+
+      try {
+        const res = await fetch(`${apiBaseUrl}/relevance`);
+        if (!res.ok) {
+          throw new Error(`Relevance request failed with status ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (!ignore) {
+          setRelevanceDefaults(data.defaults || EMPTY_RELEVANCE_SETTINGS);
+          setRelevanceSettings(data.weights || EMPTY_RELEVANCE_SETTINGS);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setRelevanceError("Relevance settings are unavailable right now.");
+          setRelevanceDefaults(EMPTY_RELEVANCE_SETTINGS);
+          setRelevanceSettings(EMPTY_RELEVANCE_SETTINGS);
+        }
+      } finally {
+        if (!ignore) {
+          setRelevanceLoading(false);
+        }
+      }
+    };
+
+    fetchRelevance();
 
     return () => {
       ignore = true;
@@ -243,6 +364,51 @@ function App() {
     }
   };
 
+  const handleRelevanceChange = (section, key, value) => {
+    setRelevanceMessage("");
+    setRelevanceSettings((currentSettings) => ({
+      ...currentSettings,
+      [section]: {
+        ...currentSettings[section],
+        [key]: Number(value),
+      },
+    }));
+  };
+
+  const handleSaveRelevance = async () => {
+    setRelevanceSaving(true);
+    setRelevanceError("");
+    setRelevanceMessage("");
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/relevance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ weights: relevanceSettings }),
+      });
+      if (!res.ok) {
+        throw new Error(`Relevance save failed with status ${res.status}`);
+      }
+
+      const data = await res.json();
+      setRelevanceDefaults(data.defaults || EMPTY_RELEVANCE_SETTINGS);
+      setRelevanceSettings(data.weights || EMPTY_RELEVANCE_SETTINGS);
+      setRelevanceMessage("Ranking weights saved.");
+    } catch (err) {
+      setRelevanceError("Could not save relevance settings.");
+    } finally {
+      setRelevanceSaving(false);
+    }
+  };
+
+  const handleResetRelevance = () => {
+    setRelevanceError("");
+    setRelevanceMessage("");
+    setRelevanceSettings(relevanceDefaults);
+  };
+
   const handleQueryKeyDown = async (event) => {
     if (event.key === "ArrowDown" && visibleSuggestions.length > 0) {
       event.preventDefault();
@@ -306,7 +472,13 @@ function App() {
             >
               Search Workspace
             </button>
-            <span>Relevance</span>
+            <button
+              type="button"
+              className={activeView === "relevance" ? "active" : ""}
+              onClick={() => setActiveView("relevance")}
+            >
+              Relevance
+            </button>
             <button
               type="button"
               className={activeView === "analytics" ? "active" : ""}
@@ -532,6 +704,111 @@ function App() {
               </section>
             </div>
           </>
+        ) : activeView === "relevance" ? (
+          <section className="relevance-view">
+            <div className="dashboard-header">
+              <p className="eyebrow">Relevance Controls</p>
+              <h2>Tune how your search engine ranks pages and images</h2>
+              <p className="dashboard-subtitle">
+                Adjust the scoring weights below, then save to make future searches use
+                the new ranking rules.
+              </p>
+            </div>
+
+            {relevanceLoading ? (
+              <p className="status-message">Loading relevance controls...</p>
+            ) : (
+              <>
+                {relevanceError && (
+                  <p className="status-message error">{relevanceError}</p>
+                )}
+                {relevanceMessage && (
+                  <p className="status-message success">{relevanceMessage}</p>
+                )}
+
+                <div className="relevance-grid">
+                  <article className="dashboard-card relevance-card">
+                    <p className="dashboard-label">Web Ranking</p>
+                    <h3>Page search weights</h3>
+                    <div className="relevance-controls">
+                      {RELEVANCE_FIELDS.web.map((field) => (
+                        <label key={field.key} className="relevance-control">
+                          <div className="relevance-control-copy">
+                            <span>{field.label}</span>
+                            <small>{field.description}</small>
+                          </div>
+                          <div className="relevance-input-row">
+                            <input
+                              type="range"
+                              min="0"
+                              max="20"
+                              step="1"
+                              value={relevanceSettings.web[field.key]}
+                              onChange={(event) =>
+                                handleRelevanceChange("web", field.key, event.target.value)
+                              }
+                            />
+                            <strong>{relevanceSettings.web[field.key]}</strong>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="dashboard-card relevance-card">
+                    <p className="dashboard-label">Image Ranking</p>
+                    <h3>Image search weights</h3>
+                    <div className="relevance-controls">
+                      {RELEVANCE_FIELDS.images.map((field) => (
+                        <label key={field.key} className="relevance-control">
+                          <div className="relevance-control-copy">
+                            <span>{field.label}</span>
+                            <small>{field.description}</small>
+                          </div>
+                          <div className="relevance-input-row">
+                            <input
+                              type="range"
+                              min="0"
+                              max="20"
+                              step="1"
+                              value={relevanceSettings.images[field.key]}
+                              onChange={(event) =>
+                                handleRelevanceChange(
+                                  "images",
+                                  field.key,
+                                  event.target.value
+                                )
+                              }
+                            />
+                            <strong>{relevanceSettings.images[field.key]}</strong>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </article>
+                </div>
+
+                <div className="relevance-actions">
+                  <button
+                    type="button"
+                    className="primary-action"
+                    onClick={handleSaveRelevance}
+                    disabled={relevanceSaving}
+                  >
+                    {relevanceSaving ? "Saving..." : "Save weights"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={handleResetRelevance}
+                    disabled={relevanceSaving}
+                  >
+                    Reset draft
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
         ) : (
           <section className="analytics-view">
             <div className="dashboard-header">

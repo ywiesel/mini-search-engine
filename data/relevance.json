@@ -1,0 +1,16 @@
+{
+  "web": {
+    "titleWeight": 4,
+    "urlWeight": 2,
+    "contentWeight": 1,
+    "coverageBonus": 3,
+    "exactTitleBonus": 6
+  },
+  "images": {
+    "altWeight": 5,
+    "pageTitleWeight": 3,
+    "sourceUrlWeight": 2,
+    "imageContentWeight": 1,
+    "imageCoverageBonus": 2
+  }
+}
