@@ -2,78 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const PAGE_SIZE = 5;
-const EMPTY_RELEVANCE_SETTINGS = {
-  web: {
-    titleWeight: 0,
-    urlWeight: 0,
-    contentWeight: 0,
-    coverageBonus: 0,
-    exactTitleBonus: 0,
-  },
-  images: {
-    altWeight: 0,
-    pageTitleWeight: 0,
-    sourceUrlWeight: 0,
-    imageContentWeight: 0,
-    imageCoverageBonus: 0,
-  },
-};
-
-const RELEVANCE_FIELDS = {
-  web: [
-    {
-      key: "titleWeight",
-      label: "Title weight",
-      description: "Boost pages when the query appears in the page title.",
-    },
-    {
-      key: "urlWeight",
-      label: "URL weight",
-      description: "Boost pages when the query appears in the page URL.",
-    },
-    {
-      key: "contentWeight",
-      label: "Content weight",
-      description: "Control how much repeated mentions in body text matter.",
-    },
-    {
-      key: "coverageBonus",
-      label: "Coverage bonus",
-      description: "Reward pages that match more of the query terms.",
-    },
-    {
-      key: "exactTitleBonus",
-      label: "Exact title bonus",
-      description: "Give extra points when the full query appears in the title.",
-    },
-  ],
-  images: [
-    {
-      key: "altWeight",
-      label: "Alt text weight",
-      description: "Boost images whose alt text matches the query.",
-    },
-    {
-      key: "pageTitleWeight",
-      label: "Page title weight",
-      description: "Boost images from pages with matching titles.",
-    },
-    {
-      key: "sourceUrlWeight",
-      label: "Source URL weight",
-      description: "Boost images whose source page URL matches the query.",
-    },
-    {
-      key: "imageContentWeight",
-      label: "Image content weight",
-      description: "Control term frequency impact across image metadata.",
-    },
-    {
-      key: "imageCoverageBonus",
-      label: "Image coverage bonus",
-      description: "Reward images matching more query terms.",
-    },
-  ],
+const DEFAULT_PREFERENCES = {
+  theme: "airy",
+  density: "comfortable",
+  shape: "soft",
+  homepage: "search",
 };
 
 function escapeRegExp(value) {
@@ -115,13 +48,12 @@ function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [relevanceLoading, setRelevanceLoading] = useState(false);
-  const [relevanceSaving, setRelevanceSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [error, setError] = useState("");
-  const [relevanceError, setRelevanceError] = useState("");
-  const [relevanceMessage, setRelevanceMessage] = useState("");
+  const [preferencesMessage, setPreferencesMessage] = useState("");
+  const [hasAppliedHomepagePreference, setHasAppliedHomepagePreference] =
+    useState(false);
   const [searchMeta, setSearchMeta] = useState({
     total: 0,
     searchTimeMs: 0,
@@ -137,12 +69,7 @@ function App() {
     lastIndexed: null,
     topDomains: [],
   });
-  const [relevanceDefaults, setRelevanceDefaults] = useState(
-    EMPTY_RELEVANCE_SETTINGS
-  );
-  const [relevanceSettings, setRelevanceSettings] = useState(
-    EMPTY_RELEVANCE_SETTINGS
-  );
+  const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
 
   const apiBaseUrl = process.env.REACT_APP_API_URL || "http://127.0.0.1:5050";
 
@@ -195,42 +122,34 @@ function App() {
   }, [apiBaseUrl]);
 
   useEffect(() => {
-    let ignore = false;
-
-    const fetchRelevance = async () => {
-      setRelevanceLoading(true);
-      setRelevanceError("");
-
-      try {
-        const res = await fetch(`${apiBaseUrl}/relevance`);
-        if (!res.ok) {
-          throw new Error(`Relevance request failed with status ${res.status}`);
-        }
-
-        const data = await res.json();
-        if (!ignore) {
-          setRelevanceDefaults(data.defaults || EMPTY_RELEVANCE_SETTINGS);
-          setRelevanceSettings(data.weights || EMPTY_RELEVANCE_SETTINGS);
-        }
-      } catch (err) {
-        if (!ignore) {
-          setRelevanceError("Relevance settings are unavailable right now.");
-          setRelevanceDefaults(EMPTY_RELEVANCE_SETTINGS);
-          setRelevanceSettings(EMPTY_RELEVANCE_SETTINGS);
-        }
-      } finally {
-        if (!ignore) {
-          setRelevanceLoading(false);
-        }
+    try {
+      const savedPreferences = window.localStorage.getItem("northstar-preferences");
+      if (savedPreferences) {
+        setPreferences({
+          ...DEFAULT_PREFERENCES,
+          ...JSON.parse(savedPreferences),
+        });
       }
-    };
+    } catch (err) {
+      setPreferences(DEFAULT_PREFERENCES);
+    }
+  }, []);
 
-    fetchRelevance();
+  useEffect(() => {
+    window.localStorage.setItem(
+      "northstar-preferences",
+      JSON.stringify(preferences)
+    );
+  }, [preferences]);
 
-    return () => {
-      ignore = true;
-    };
-  }, [apiBaseUrl]);
+  useEffect(() => {
+    if (hasAppliedHomepagePreference) {
+      return;
+    }
+
+    setActiveView(preferences.homepage === "activity" ? "analytics" : "search");
+    setHasAppliedHomepagePreference(true);
+  }, [hasAppliedHomepagePreference, preferences.homepage]);
 
   useEffect(() => {
     let ignore = false;
@@ -364,49 +283,17 @@ function App() {
     }
   };
 
-  const handleRelevanceChange = (section, key, value) => {
-    setRelevanceMessage("");
-    setRelevanceSettings((currentSettings) => ({
-      ...currentSettings,
-      [section]: {
-        ...currentSettings[section],
-        [key]: Number(value),
-      },
+  const handlePreferenceChange = (key, value) => {
+    setPreferencesMessage("Your look and feel has been updated.");
+    setPreferences((currentPreferences) => ({
+      ...currentPreferences,
+      [key]: value,
     }));
   };
 
-  const handleSaveRelevance = async () => {
-    setRelevanceSaving(true);
-    setRelevanceError("");
-    setRelevanceMessage("");
-
-    try {
-      const res = await fetch(`${apiBaseUrl}/relevance`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ weights: relevanceSettings }),
-      });
-      if (!res.ok) {
-        throw new Error(`Relevance save failed with status ${res.status}`);
-      }
-
-      const data = await res.json();
-      setRelevanceDefaults(data.defaults || EMPTY_RELEVANCE_SETTINGS);
-      setRelevanceSettings(data.weights || EMPTY_RELEVANCE_SETTINGS);
-      setRelevanceMessage("Ranking weights saved.");
-    } catch (err) {
-      setRelevanceError("Could not save relevance settings.");
-    } finally {
-      setRelevanceSaving(false);
-    }
-  };
-
-  const handleResetRelevance = () => {
-    setRelevanceError("");
-    setRelevanceMessage("");
-    setRelevanceSettings(relevanceDefaults);
+  const handleResetPreferences = () => {
+    setPreferences(DEFAULT_PREFERENCES);
+    setPreferencesMessage("Preferences reset to the default look.");
   };
 
   const handleQueryKeyDown = async (event) => {
@@ -450,14 +337,20 @@ function App() {
       : 0;
   const searchPlaceholder =
     searchMode === "images"
-      ? "Search indexed images by alt text, page title, or URL..."
-      : "Search docs, frameworks, guides, or domains...";
+      ? "Try cats, sunsets, recipes, or a website name..."
+      : "Try a topic, question, or website name...";
   const formattedIndexedDate = stats.lastIndexed
     ? new Date(stats.lastIndexed * 1000).toLocaleString()
     : "Unavailable";
+  const appClassName = [
+    "app-shell",
+    `theme-${preferences.theme}`,
+    `density-${preferences.density}`,
+    `shape-${preferences.shape}`,
+  ].join(" ");
 
   return (
-    <div className="app-shell">
+    <div className={appClassName}>
       <header className="hero-shell">
         <nav className="topbar">
           <div className="brand-mark">
@@ -470,21 +363,21 @@ function App() {
               className={activeView === "search" ? "active" : ""}
               onClick={() => setActiveView("search")}
             >
-              Search Workspace
+              Search
             </button>
             <button
               type="button"
-              className={activeView === "relevance" ? "active" : ""}
-              onClick={() => setActiveView("relevance")}
+              className={activeView === "preferences" ? "active" : ""}
+              onClick={() => setActiveView("preferences")}
             >
-              Relevance
+              Preferences
             </button>
             <button
               type="button"
               className={activeView === "analytics" ? "active" : ""}
               onClick={() => setActiveView("analytics")}
             >
-              Analytics
+              Activity
             </button>
           </div>
         </nav>
@@ -492,24 +385,28 @@ function App() {
           <>
             <div className="hero-grid">
               <section className="hero-copy">
-                <p className="eyebrow">Independent Search Platform</p>
-                <h1>Search your own indexed web content with clarity and control.</h1>
+                <p className="eyebrow">Simple Search</p>
+                <h1>Find what you want without overthinking it.</h1>
                 <p className="subtitle">
-                  Northstar Search gives your crawler data a professional interface:
-                  fast lookup, ranked results, index analytics, and a workflow that
-                  feels built for real search operations.
+                  Type in something you are curious about and explore the pages or
+                  pictures that match. The experience is meant to feel easy, calm,
+                  and familiar from the start.
                 </p>
 
                 <div className="hero-actions">
-                  <span className="hero-pill">Fast suggestions</span>
-                  <span className="hero-pill">Weighted ranking</span>
-                  <span className="hero-pill">Index visibility</span>
+                  <span className="hero-pill">Easy to try</span>
+                  <span className="hero-pill">Clear results</span>
+                  <span className="hero-pill">No jargon</span>
                 </div>
               </section>
 
               <section className="hero-panel">
                 <div className="panel-card">
-                  <p className="panel-label">Search the index</p>
+                  <p className="panel-label">Start here</p>
+                  <p className="panel-intro">
+                    Search by word, topic, or site name. You can switch between web
+                    pages and images anytime.
+                  </p>
 
                   <div className="search-mode-switch" role="tablist" aria-label="Search type">
                     <button
@@ -532,6 +429,7 @@ function App() {
                     <div className="search-input-wrap">
                       <input
                         type="text"
+                        role="combobox"
                         value={query}
                         placeholder={searchPlaceholder}
                         onChange={(e) => {
@@ -544,13 +442,19 @@ function App() {
                         }}
                         onKeyDown={handleQueryKeyDown}
                         aria-label="Search query"
+                        aria-autocomplete="list"
                         aria-expanded={showSuggestions}
+                        aria-haspopup="listbox"
                         aria-controls="search-suggestions"
                         autoComplete="off"
                       />
                       {showSuggestions &&
                         (visibleSuggestions.length > 0 || suggestionsLoading) && (
-                          <div className="suggestions-panel" id="search-suggestions">
+                          <div
+                            className="suggestions-panel"
+                            id="search-suggestions"
+                            role="listbox"
+                          >
                             {suggestionsLoading && (
                               <p className="suggestions-status">
                                 Looking up suggestions...
@@ -607,7 +511,7 @@ function App() {
                   )}
 
                   <div className="search-hints">
-                    <span>Popular:</span>
+                    <span>Try one:</span>
                     <button type="button" onClick={() => handleSuggestionClick("python")}>
                       python
                     </button>
@@ -628,8 +532,8 @@ function App() {
                         <p className="eyebrow">{searchMode === "images" ? "Image Results" : "Results"}</p>
                         <h2>
                           {searchMode === "images"
-                            ? "Browse indexed images from your search data"
-                            : "Browse what your engine found"}
+                            ? "Pictures that match your search"
+                            : "Pages that match your search"}
                         </h2>
                         <p className="results-range">
                           Showing {firstResultIndex}-{lastResultIndex} of {searchMeta.total}
@@ -654,7 +558,6 @@ function App() {
                                 <p>{highlightMatches(result.pageTitle, submittedQuery)}</p>
                                 <div className="result-meta">
                                   <span>{result.sourcePage}</span>
-                                  <span>Score {result.score}</span>
                                 </div>
                               </div>
                             </li>
@@ -670,7 +573,6 @@ function App() {
                               <p>{highlightMatches(result.snippet, submittedQuery)}</p>
                               <div className="result-meta">
                                 <span>{result.url}</span>
-                                <span>Score {result.score}</span>
                               </div>
                             </li>
                           ))}
@@ -704,110 +606,148 @@ function App() {
               </section>
             </div>
           </>
-        ) : activeView === "relevance" ? (
-          <section className="relevance-view">
+        ) : activeView === "preferences" ? (
+          <section className="preferences-view">
             <div className="dashboard-header">
-              <p className="eyebrow">Relevance Controls</p>
-              <h2>Tune how your search engine ranks pages and images</h2>
+              <p className="eyebrow">Your Style</p>
+              <h2>Make the search experience feel better for you</h2>
               <p className="dashboard-subtitle">
-                Adjust the scoring weights below, then save to make future searches use
-                the new ranking rules.
+                Pick the look that feels easiest on your eyes. These choices stay on
+                your device and change how the site appears for you.
               </p>
             </div>
 
-            {relevanceLoading ? (
-              <p className="status-message">Loading relevance controls...</p>
-            ) : (
-              <>
-                {relevanceError && (
-                  <p className="status-message error">{relevanceError}</p>
-                )}
-                {relevanceMessage && (
-                  <p className="status-message success">{relevanceMessage}</p>
-                )}
-
-                <div className="relevance-grid">
-                  <article className="dashboard-card relevance-card">
-                    <p className="dashboard-label">Web Ranking</p>
-                    <h3>Page search weights</h3>
-                    <div className="relevance-controls">
-                      {RELEVANCE_FIELDS.web.map((field) => (
-                        <label key={field.key} className="relevance-control">
-                          <div className="relevance-control-copy">
-                            <span>{field.label}</span>
-                            <small>{field.description}</small>
-                          </div>
-                          <div className="relevance-input-row">
-                            <input
-                              type="range"
-                              min="0"
-                              max="20"
-                              step="1"
-                              value={relevanceSettings.web[field.key]}
-                              onChange={(event) =>
-                                handleRelevanceChange("web", field.key, event.target.value)
-                              }
-                            />
-                            <strong>{relevanceSettings.web[field.key]}</strong>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </article>
-
-                  <article className="dashboard-card relevance-card">
-                    <p className="dashboard-label">Image Ranking</p>
-                    <h3>Image search weights</h3>
-                    <div className="relevance-controls">
-                      {RELEVANCE_FIELDS.images.map((field) => (
-                        <label key={field.key} className="relevance-control">
-                          <div className="relevance-control-copy">
-                            <span>{field.label}</span>
-                            <small>{field.description}</small>
-                          </div>
-                          <div className="relevance-input-row">
-                            <input
-                              type="range"
-                              min="0"
-                              max="20"
-                              step="1"
-                              value={relevanceSettings.images[field.key]}
-                              onChange={(event) =>
-                                handleRelevanceChange(
-                                  "images",
-                                  field.key,
-                                  event.target.value
-                                )
-                              }
-                            />
-                            <strong>{relevanceSettings.images[field.key]}</strong>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </article>
-                </div>
-
-                <div className="relevance-actions">
-                  <button
-                    type="button"
-                    className="primary-action"
-                    onClick={handleSaveRelevance}
-                    disabled={relevanceSaving}
-                  >
-                    {relevanceSaving ? "Saving..." : "Save weights"}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-action"
-                    onClick={handleResetRelevance}
-                    disabled={relevanceSaving}
-                  >
-                    Reset draft
-                  </button>
-                </div>
-              </>
+            {preferencesMessage && (
+              <p className="status-message success">{preferencesMessage}</p>
             )}
+
+            <div className="preferences-grid">
+              <article className="dashboard-card preference-card">
+                <p className="dashboard-label">Color Feel</p>
+                <h3>Choose a mood</h3>
+                <div className="preference-options">
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.theme === "airy" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("theme", "airy")}
+                  >
+                    <strong>Airy</strong>
+                    <span>Bright, light, and open.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.theme === "warm" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("theme", "warm")}
+                  >
+                    <strong>Warm</strong>
+                    <span>Softer tones with a cozy feel.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.theme === "calm" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("theme", "calm")}
+                  >
+                    <strong>Calm</strong>
+                    <span>Cooler contrast for a steadier look.</span>
+                  </button>
+                </div>
+              </article>
+
+              <article className="dashboard-card preference-card">
+                <p className="dashboard-label">Spacing</p>
+                <h3>Choose your reading pace</h3>
+                <div className="preference-options">
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.density === "compact" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("density", "compact")}
+                  >
+                    <strong>Compact</strong>
+                    <span>Fit more on the screen at once.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.density === "comfortable" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("density", "comfortable")}
+                  >
+                    <strong>Comfortable</strong>
+                    <span>A balanced amount of breathing room.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.density === "spacious" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("density", "spacious")}
+                  >
+                    <strong>Spacious</strong>
+                    <span>More room between sections and results.</span>
+                  </button>
+                </div>
+              </article>
+
+              <article className="dashboard-card preference-card">
+                <p className="dashboard-label">Card Style</p>
+                <h3>Choose a shape</h3>
+                <div className="preference-options">
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.shape === "soft" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("shape", "soft")}
+                  >
+                    <strong>Soft</strong>
+                    <span>Rounded corners and a gentle feel.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.shape === "balanced" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("shape", "balanced")}
+                  >
+                    <strong>Balanced</strong>
+                    <span>Clean and modern without feeling sharp.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.shape === "crisp" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("shape", "crisp")}
+                  >
+                    <strong>Crisp</strong>
+                    <span>More structure with tighter corners.</span>
+                  </button>
+                </div>
+              </article>
+
+              <article className="dashboard-card preference-card">
+                <p className="dashboard-label">Start Page</p>
+                <h3>Choose what opens first</h3>
+                <div className="preference-options">
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.homepage === "search" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("homepage", "search")}
+                  >
+                    <strong>Search</strong>
+                    <span>Jump right into looking things up.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`preference-option${preferences.homepage === "activity" ? " active" : ""}`}
+                    onClick={() => handlePreferenceChange("homepage", "activity")}
+                  >
+                    <strong>Activity</strong>
+                    <span>Open with your search overview first.</span>
+                  </button>
+                </div>
+              </article>
+            </div>
+
+            <div className="relevance-actions">
+              <button
+                type="button"
+                className="secondary-action"
+                onClick={handleResetPreferences}
+              >
+                Reset look
+              </button>
+            </div>
           </section>
         ) : (
           <section className="analytics-view">

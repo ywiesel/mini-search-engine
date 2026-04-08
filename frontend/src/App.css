@@ -37,6 +37,90 @@ body {
   max-width: 1240px;
   margin: 0 auto;
   padding: 28px 20px 56px;
+  transition: padding 0.2s ease;
+}
+
+.app-shell.theme-airy {
+  --bg: #f3f5f8;
+  --bg-accent: #e5ebf3;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-strong: #ffffff;
+  --ink-900: #142033;
+  --ink-700: #4f5f75;
+  --ink-500: #76859a;
+  --line: rgba(20, 32, 51, 0.1);
+  --line-strong: rgba(20, 32, 51, 0.16);
+  --brand-700: #174ea6;
+  --brand-600: #2866c7;
+  --brand-100: rgba(40, 102, 199, 0.12);
+  --shadow-lg: 0 28px 60px rgba(18, 30, 49, 0.08);
+  --shadow-md: 0 16px 34px rgba(18, 30, 49, 0.07);
+  --shadow-sm: 0 10px 20px rgba(18, 30, 49, 0.05);
+}
+
+.app-shell.theme-warm {
+  --bg: #f8f1e8;
+  --bg-accent: #f0e4d6;
+  --panel: rgba(255, 252, 247, 0.94);
+  --panel-strong: #fffdf9;
+  --ink-900: #36261c;
+  --ink-700: #6d5849;
+  --ink-500: #927d6e;
+  --line: rgba(54, 38, 28, 0.11);
+  --line-strong: rgba(54, 38, 28, 0.16);
+  --brand-700: #ab5d28;
+  --brand-600: #c9773f;
+  --brand-100: rgba(201, 119, 63, 0.12);
+  --shadow-lg: 0 28px 60px rgba(73, 46, 24, 0.1);
+  --shadow-md: 0 16px 34px rgba(73, 46, 24, 0.08);
+  --shadow-sm: 0 10px 20px rgba(73, 46, 24, 0.06);
+}
+
+.app-shell.theme-calm {
+  --bg: #edf5f6;
+  --bg-accent: #dbe8eb;
+  --panel: rgba(250, 254, 254, 0.94);
+  --panel-strong: #ffffff;
+  --ink-900: #173039;
+  --ink-700: #48656f;
+  --ink-500: #6f8991;
+  --line: rgba(23, 48, 57, 0.1);
+  --line-strong: rgba(23, 48, 57, 0.16);
+  --brand-700: #176f7b;
+  --brand-600: #2f8f9b;
+  --brand-100: rgba(47, 143, 155, 0.12);
+  --shadow-lg: 0 28px 60px rgba(20, 47, 56, 0.08);
+  --shadow-md: 0 16px 34px rgba(20, 47, 56, 0.07);
+  --shadow-sm: 0 10px 20px rgba(20, 47, 56, 0.05);
+}
+
+.app-shell.density-compact {
+  padding: 20px 18px 40px;
+}
+
+.app-shell.density-spacious {
+  padding: 36px 24px 72px;
+}
+
+.app-shell.shape-soft {
+  --surface-radius-xl: 32px;
+  --surface-radius-lg: 28px;
+  --surface-radius-md: 24px;
+  --surface-radius-sm: 22px;
+}
+
+.app-shell.shape-balanced {
+  --surface-radius-xl: 26px;
+  --surface-radius-lg: 22px;
+  --surface-radius-md: 18px;
+  --surface-radius-sm: 16px;
+}
+
+.app-shell.shape-crisp {
+  --surface-radius-xl: 18px;
+  --surface-radius-lg: 16px;
+  --surface-radius-md: 14px;
+  --surface-radius-sm: 12px;
 }
 
 .hero-shell,
@@ -50,7 +134,7 @@ body {
   overflow: hidden;
   padding: 24px;
   border: 1px solid var(--line);
-  border-radius: 32px;
+  border-radius: var(--surface-radius-xl, 32px);
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(245, 248, 252, 0.88)),
     var(--panel);
@@ -207,7 +291,7 @@ body {
 .panel-card {
   width: 100%;
   padding: 24px;
-  border-radius: 28px;
+  border-radius: var(--surface-radius-lg, 28px);
   border: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 253, 0.94)),
@@ -222,6 +306,14 @@ body {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.panel-intro {
+  margin: -4px 0 18px;
+  max-width: 42ch;
+  color: var(--ink-700);
+  font-size: 0.98rem;
+  line-height: 1.6;
 }
 
 .search-mode-switch {
@@ -264,7 +356,7 @@ body {
 .search-form input,
 .search-form button {
   font-size: 1rem;
-  border-radius: 16px;
+  border-radius: var(--surface-radius-md, 16px);
 }
 
 .search-form input {
@@ -314,7 +406,7 @@ body {
   z-index: 10;
   padding: 8px;
   border: 1px solid var(--line-strong);
-  border-radius: 18px;
+  border-radius: var(--surface-radius-md, 18px);
   background: rgba(255, 255, 255, 0.98);
   box-shadow: var(--shadow-md);
 }
@@ -437,7 +529,7 @@ body {
 .result-card {
   padding: 22px;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: var(--surface-radius-sm, 22px);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.9));
   box-shadow: var(--shadow-sm);
 }
@@ -475,7 +567,7 @@ body {
 .image-card {
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: var(--surface-radius-sm, 22px);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.9));
   box-shadow: var(--shadow-sm);
 }
@@ -536,7 +628,7 @@ body {
 .feature-card,
 .dashboard-card {
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: var(--surface-radius-md, 24px);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(245, 248, 252, 0.82));
   box-shadow: var(--shadow-sm);
 }
@@ -571,64 +663,61 @@ body {
   margin-top: 12px;
 }
 
-.relevance-view {
+.preferences-view {
   margin-top: 12px;
 }
 
-.relevance-grid {
+.preferences-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
 
-.relevance-card h3 {
+.preference-card h3 {
   margin: 0 0 18px;
   font-size: 1.4rem;
   line-height: 1.1;
 }
 
-.relevance-controls {
-  display: grid;
-  gap: 18px;
-}
-
-.relevance-control {
+.preference-options {
   display: grid;
   gap: 12px;
 }
 
-.relevance-control-copy {
+.preference-option {
   display: grid;
   gap: 6px;
-}
-
-.relevance-control-copy span {
-  font-weight: 700;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--surface-radius-md, 18px);
+  background: rgba(255, 255, 255, 0.66);
   color: var(--ink-900);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
-.relevance-control-copy small {
+.preference-option strong {
+  font-size: 1rem;
+}
+
+.preference-option span {
   color: var(--ink-700);
-  font-size: 0.92rem;
   line-height: 1.5;
 }
 
-.relevance-input-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
+.preference-option:hover {
+  transform: translateY(-1px);
+  border-color: rgba(23, 78, 166, 0.18);
+  background: rgba(255, 255, 255, 0.9);
 }
 
-.relevance-input-row input[type="range"] {
-  width: 100%;
-  accent-color: var(--brand-600);
-}
-
-.relevance-input-row strong {
-  min-width: 2ch;
-  font-size: 1.05rem;
-  color: var(--ink-900);
+.preference-option.active {
+  border-color: rgba(23, 78, 166, 0.24);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), var(--brand-100));
+  box-shadow: var(--shadow-sm);
 }
 
 .relevance-actions {
@@ -719,7 +808,7 @@ mark {
   .hero-grid,
   .features-row,
   .dashboard-grid,
-  .relevance-grid {
+  .preferences-grid {
     grid-template-columns: 1fr;
   }
 
@@ -735,7 +824,7 @@ mark {
 
   .hero-shell {
     padding: 16px;
-    border-radius: 24px;
+    border-radius: var(--surface-radius-md, 24px);
   }
 
   .topbar {
