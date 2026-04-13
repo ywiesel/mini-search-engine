@@ -11,7 +11,7 @@ DEFAULT_SEED_URLS = [
     "https://www.python.org/",
     "https://react.dev/",
 ]
-MAX_PAGES = 12
+MAX_PAGES = 30
 MAX_LINKS_PER_PAGE = 8
 REQUEST_TIMEOUT = 10
 MIN_CONTENT_LENGTH = 80
