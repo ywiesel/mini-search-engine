@@ -36,4 +36,4 @@ This project implements a simplified search engine capable of:
 1. **Crawl pages** (optional):
 ```bash
 cd crawler
-python crawler.py
+python3 crawler.py
