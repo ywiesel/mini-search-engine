@@ -9,6 +9,78 @@ const DEFAULT_PREFERENCES = {
   homepage: "search",
 };
 
+const THEME_OPTIONS = [
+  {
+    value: "airy",
+    label: "Airy",
+    description: "Bright, light, and open.",
+    detail: "Makes the engine feel clearer with cooler blues and more glow.",
+    swatches: ["#ffffff", "#dfe8f7", "#2866c7"],
+  },
+  {
+    value: "warm",
+    label: "Warm",
+    description: "Softer tones with a cozy feel.",
+    detail: "Shifts the engine toward cream backgrounds and warmer orange accents.",
+    swatches: ["#fff8ef", "#efd8c2", "#c9773f"],
+  },
+  {
+    value: "calm",
+    label: "Calm",
+    description: "Cooler contrast for a steadier look.",
+    detail: "Gives the engine a gentler teal palette with a quieter overall feel.",
+    swatches: ["#f8ffff", "#d7eaec", "#2f8f9b"],
+  },
+];
+
+const DENSITY_OPTIONS = [
+  {
+    value: "compact",
+    label: "Compact",
+    description: "Fit more on the screen at once.",
+    detail: "Tighter spacing between sections, cards, and controls.",
+    exampleClassName: "compact",
+  },
+  {
+    value: "comfortable",
+    label: "Comfortable",
+    description: "A balanced amount of breathing room.",
+    detail: "Keeps the layout easy to scan without spreading things too far apart.",
+    exampleClassName: "comfortable",
+  },
+  {
+    value: "spacious",
+    label: "Spacious",
+    description: "More room between sections and results.",
+    detail: "Adds larger gaps so each result and control stands apart more clearly.",
+    exampleClassName: "spacious",
+  },
+];
+
+const SHAPE_OPTIONS = [
+  {
+    value: "soft",
+    label: "Soft",
+    description: "Rounded corners and a gentle feel.",
+    detail: "Cards and buttons become extra rounded and relaxed.",
+    exampleClassName: "soft",
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    description: "Clean and modern without feeling sharp.",
+    detail: "Blends smooth corners with a structured card shape.",
+    exampleClassName: "balanced",
+  },
+  {
+    value: "crisp",
+    label: "Crisp",
+    description: "More structure with tighter corners.",
+    detail: "Makes cards and controls feel more defined and precise.",
+    exampleClassName: "crisp",
+  },
+];
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -39,6 +111,17 @@ function highlightMatches(text, searchQuery) {
   );
 }
 
+function isWebsiteQuery(value) {
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return false;
+  }
+
+  return /^(https?:\/\/|www\.)/.test(normalizedValue)
+    || /\b[a-z0-9-]+\.(com|org|net|io|dev|app|ai|edu|gov|co|us|uk|ca|info|me|tv)\b/.test(normalizedValue);
+}
+
 function App() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
@@ -60,6 +143,7 @@ function App() {
     page: 1,
     pageSize: PAGE_SIZE,
     totalPages: 0,
+    mode: "text",
   });
   const [stats, setStats] = useState({
     totalDocuments: 0,
@@ -206,9 +290,12 @@ function App() {
         page: 1,
         pageSize: PAGE_SIZE,
         totalPages: 0,
+        mode: "text",
       });
       return;
     }
+
+    const resolvedMode = isWebsiteQuery(normalizedQuery) ? "text" : nextMode;
 
     setLoading(true);
     setError("");
@@ -217,7 +304,7 @@ function App() {
 
     try {
       const res = await fetch(
-        `${apiBaseUrl}/search?q=${encodeURIComponent(normalizedQuery)}&page=${nextPage}&page_size=${PAGE_SIZE}&mode=${encodeURIComponent(nextMode)}`
+        `${apiBaseUrl}/search?q=${encodeURIComponent(normalizedQuery)}&page=${nextPage}&page_size=${PAGE_SIZE}&mode=${encodeURIComponent(resolvedMode)}`
       );
       if (!res.ok) {
         throw new Error(`Search request failed with status ${res.status}`);
@@ -230,6 +317,7 @@ function App() {
         page: data.page || nextPage,
         pageSize: data.pageSize || PAGE_SIZE,
         totalPages: data.totalPages || 0,
+        mode: data.mode || resolvedMode,
       });
     } catch (err) {
       console.error("Error:", err);
@@ -240,6 +328,7 @@ function App() {
         page: nextPage,
         pageSize: PAGE_SIZE,
         totalPages: 0,
+        mode: resolvedMode,
       });
       setError("Search is unavailable right now. Make sure the Flask API is running.");
     }
@@ -279,6 +368,7 @@ function App() {
         page: 1,
         pageSize: PAGE_SIZE,
         totalPages: 0,
+        mode: "text",
       });
     }
   };
@@ -342,6 +432,7 @@ function App() {
   const formattedIndexedDate = stats.lastIndexed
     ? new Date(stats.lastIndexed * 1000).toLocaleString()
     : "Unavailable";
+  const activeResultsMode = searchMeta.mode || searchMode;
   const appClassName = [
     "app-shell",
     `theme-${preferences.theme}`,
@@ -489,7 +580,7 @@ function App() {
                   )}
                   {!loading && !error && query.trim() && results.length === 0 && (
                     <p className="status-message">
-                      {searchMode === "images"
+                      {activeResultsMode === "images"
                         ? stats.totalImages === 0
                           ? `No indexed images are available yet. Re-run the crawler with network access, then try "${query.trim()}" again.`
                           : `No image results found for "${query.trim()}". Re-run the crawler to index more page images.`
@@ -512,26 +603,26 @@ function App() {
 
                   <div className="search-hints">
                     <span>Try one:</span>
-                    <button type="button" onClick={() => handleSuggestionClick("python")}>
-                      python
+                    <button type="button" onClick={() => handleSuggestionClick("javascript")}>
+                      javascript
                     </button>
-                    <button type="button" onClick={() => handleSuggestionClick("react")}>
-                      react
+                    <button type="button" onClick={() => handleSuggestionClick("space")}>
+                      space
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSuggestionClick("web development")}
+                      onClick={() => handleSuggestionClick("climate")}
                     >
-                      web development
+                      climate
                     </button>
                   </div>
 
                   {results.length > 0 && (
                     <section className="results-section panel-results">
                       <div className="section-heading">
-                        <p className="eyebrow">{searchMode === "images" ? "Image Results" : "Results"}</p>
+                        <p className="eyebrow">{activeResultsMode === "images" ? "Image Results" : "Results"}</p>
                         <h2>
-                          {searchMode === "images"
+                          {activeResultsMode === "images"
                             ? "Pictures that match your search"
                             : "Pages that match your search"}
                         </h2>
@@ -540,11 +631,11 @@ function App() {
                         </p>
                       </div>
 
-                      {searchMode === "images" ? (
+                      {activeResultsMode === "images" ? (
                         <ul className="image-results-grid">
                           {results.map((result) => (
                             <li key={result.imageUrl} className="image-card">
-                              <a href={result.sourcePage} target="_blank" rel="noreferrer">
+                              <a href={result.imageUrl} target="_blank" rel="noreferrer">
                                 <img
                                   src={result.imageUrl}
                                   alt={result.title}
@@ -552,12 +643,14 @@ function App() {
                                 />
                               </a>
                               <div className="image-card-body">
-                                <a href={result.sourcePage} target="_blank" rel="noreferrer">
+                                <a href={result.imageUrl} target="_blank" rel="noreferrer">
                                   {highlightMatches(result.title, submittedQuery)}
                                 </a>
                                 <p>{highlightMatches(result.pageTitle, submittedQuery)}</p>
                                 <div className="result-meta">
-                                  <span>{result.sourcePage}</span>
+                                  <a href={result.sourcePage} target="_blank" rel="noreferrer">
+                                    {result.sourcePage}
+                                  </a>
                                 </div>
                               </div>
                             </li>
@@ -622,100 +715,81 @@ function App() {
             )}
 
             <div className="preferences-grid">
-              <article className="dashboard-card preference-card">
+              <section className="preference-group">
                 <p className="dashboard-label">Color Feel</p>
                 <h3>Choose a mood</h3>
                 <div className="preference-options">
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.theme === "airy" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("theme", "airy")}
-                  >
-                    <strong>Airy</strong>
-                    <span>Bright, light, and open.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.theme === "warm" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("theme", "warm")}
-                  >
-                    <strong>Warm</strong>
-                    <span>Softer tones with a cozy feel.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.theme === "calm" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("theme", "calm")}
-                  >
-                    <strong>Calm</strong>
-                    <span>Cooler contrast for a steadier look.</span>
-                  </button>
+                  {THEME_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`preference-option theme-preview theme-preview-${option.value}${
+                        preferences.theme === option.value ? " active" : ""
+                      }`}
+                      onClick={() => handlePreferenceChange("theme", option.value)}
+                    >
+                      <div className="preference-option-header">
+                        <strong>{option.label}</strong>
+                        <div className="theme-swatches" aria-hidden="true">
+                          {option.swatches.map((swatch) => (
+                            <span
+                              key={swatch}
+                              className="theme-swatch"
+                              style={{ background: swatch }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <span>{option.description}</span>
+                      <small>{option.detail}</small>
+                    </button>
+                  ))}
                 </div>
-              </article>
+              </section>
 
-              <article className="dashboard-card preference-card">
+              <section className="preference-group">
                 <p className="dashboard-label">Spacing</p>
                 <h3>Choose your reading pace</h3>
                 <div className="preference-options">
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.density === "compact" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("density", "compact")}
-                  >
-                    <strong>Compact</strong>
-                    <span>Fit more on the screen at once.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.density === "comfortable" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("density", "comfortable")}
-                  >
-                    <strong>Comfortable</strong>
-                    <span>A balanced amount of breathing room.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.density === "spacious" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("density", "spacious")}
-                  >
-                    <strong>Spacious</strong>
-                    <span>More room between sections and results.</span>
-                  </button>
+                  {DENSITY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`preference-option${preferences.density === option.value ? " active" : ""}`}
+                      onClick={() => handlePreferenceChange("density", option.value)}
+                    >
+                      <div className="preference-option-header">
+                        <strong>{option.label}</strong>
+                      </div>
+                      <span>{option.description}</span>
+                      <small>{option.detail}</small>
+                    </button>
+                  ))}
                 </div>
-              </article>
+              </section>
 
-              <article className="dashboard-card preference-card">
+              <section className="preference-group">
                 <p className="dashboard-label">Card Style</p>
                 <h3>Choose a shape</h3>
                 <div className="preference-options">
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.shape === "soft" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("shape", "soft")}
-                  >
-                    <strong>Soft</strong>
-                    <span>Rounded corners and a gentle feel.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.shape === "balanced" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("shape", "balanced")}
-                  >
-                    <strong>Balanced</strong>
-                    <span>Clean and modern without feeling sharp.</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`preference-option${preferences.shape === "crisp" ? " active" : ""}`}
-                    onClick={() => handlePreferenceChange("shape", "crisp")}
-                  >
-                    <strong>Crisp</strong>
-                    <span>More structure with tighter corners.</span>
-                  </button>
+                  {SHAPE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`preference-option${preferences.shape === option.value ? " active" : ""}`}
+                      onClick={() => handlePreferenceChange("shape", option.value)}
+                    >
+                      <div className="preference-option-header">
+                        <strong>{option.label}</strong>
+                      </div>
+                      <span>{option.description}</span>
+                      <small>{option.detail}</small>
+                    </button>
+                  ))}
                 </div>
-              </article>
+              </section>
 
-              <article className="dashboard-card preference-card">
+              <section className="preference-group">
                 <p className="dashboard-label">Start Page</p>
                 <h3>Choose what opens first</h3>
                 <div className="preference-options">
@@ -736,7 +810,7 @@ function App() {
                     <span>Open with your search overview first.</span>
                   </button>
                 </div>
-              </article>
+              </section>
             </div>
 
             <div className="relevance-actions">

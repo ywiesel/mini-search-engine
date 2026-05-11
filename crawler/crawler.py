@@ -1,3 +1,4 @@
+import argparse
 import json
 import re
 from collections import deque
@@ -10,6 +11,10 @@ from bs4 import BeautifulSoup
 DEFAULT_SEED_URLS = [
     "https://www.python.org/",
     "https://react.dev/",
+    "https://developer.mozilla.org/",
+    "https://www.nasa.gov/",
+    "https://www.si.edu/",
+    "https://www.nationalgeographic.com/",
 ]
 MAX_PAGES = 30
 MAX_LINKS_PER_PAGE = 8
@@ -44,30 +49,23 @@ def extract_images(soup, base_url, page_title):
     discovered = []
     seen = set()
 
-    for meta_selector in [
-        {"property": "og:image"},
-        {"name": "twitter:image"},
-    ]:
-        tag = soup.find("meta", attrs=meta_selector)
-        if not tag or not tag.get("content"):
+    for image in soup.find_all("img"):
+        raw_src = (
+            image.get("src")
+            or image.get("data-src")
+            or image.get("data-original")
+            or image.get("data-lazy-src")
+        )
+        if not raw_src:
             continue
 
-        image_url = normalize_url(urljoin(base_url, tag["content"]))
+        image_url = normalize_url(urljoin(base_url, raw_src))
+        lowered_url = image_url.lower()
         if image_url in seen:
-          continue
-
-        seen.add(image_url)
-        discovered.append(
-            {
-                "url": image_url,
-                "alt": page_title,
-                "sourcePage": base_url,
-            }
-        )
-
-    for image in soup.find_all("img", src=True):
-        image_url = normalize_url(urljoin(base_url, image["src"]))
-        if image_url in seen:
+            continue
+        if lowered_url.startswith("data:"):
+            continue
+        if any(token in lowered_url for token in ["sprite", "icon", "favicon", "logo"]):
             continue
 
         alt_text = image.get("alt") or image.get("title") or page_title
@@ -167,6 +165,32 @@ def save_data(pages):
     print(f"Saved {len(pages)} pages to {DATA_PATH}")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Crawl a small set of websites into the local search index."
+    )
+    parser.add_argument(
+        "seed_urls",
+        nargs="*",
+        help="Optional seed URLs to crawl instead of the built-in defaults.",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=MAX_PAGES,
+        help=f"Maximum number of pages to crawl. Default: {MAX_PAGES}.",
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=1,
+        help="How many link levels deep to crawl from each seed. Default: 1.",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    pages = crawl(DEFAULT_SEED_URLS, max_pages=MAX_PAGES, max_depth=1)
+    args = parse_args()
+    seed_urls = args.seed_urls or DEFAULT_SEED_URLS
+    pages = crawl(seed_urls, max_pages=args.max_pages, max_depth=args.max_depth)
     save_data(pages)

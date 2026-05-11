@@ -57,6 +57,8 @@ test('renders search heading', async () => {
   );
 
   render(<App />);
-  expect(await screen.findByText(/search your own indexed web content/i)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/find what you want without overthinking it/i)
+  ).toBeInTheDocument();
   expect(await screen.findByLabelText(/search query/i)).toBeInTheDocument();
 });

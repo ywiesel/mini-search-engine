@@ -30,6 +30,38 @@ DEFAULT_RELEVANCE_SETTINGS = {
     },
 }
 
+NATURAL_LANGUAGE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "best",
+    "can",
+    "do",
+    "for",
+    "from",
+    "get",
+    "give",
+    "how",
+    "i",
+    "in",
+    "is",
+    "learn",
+    "me",
+    "of",
+    "on",
+    "or",
+    "please",
+    "show",
+    "tell",
+    "the",
+    "to",
+    "what",
+    "where",
+    "which",
+    "with",
+}
+
 
 def load_relevance_settings():
     if not RELEVANCE_PATH.exists():
@@ -65,6 +97,27 @@ def normalize_relevance_settings(payload):
                 values[key] = max(0, min(float(incoming_value), 20))
     return normalized
 
+
+def should_index_image(image_record):
+    image_url = image_record["url"].lower()
+    blocked_tokens = [
+        "og-",
+        "opengraph",
+        "open-graph",
+        "twitter-image",
+        "social-share",
+        "favicon",
+        "sprite",
+    ]
+
+    if any(token in image_url for token in blocked_tokens):
+        return False
+
+    if "logo" in image_url and not image_record["alt"].strip():
+        return False
+
+    return True
+
 # Load documents
 with DATA_PATH.open() as f:
     docs = json.load(f)
@@ -97,6 +150,9 @@ for i, doc in enumerate(docs):
             "sourcePage": image.get("sourcePage", doc["url"]),
             "pageTitle": doc["title"],
         }
+        if not should_index_image(image_record):
+            continue
+
         image_id = len(image_records)
         image_records.append(image_record)
 
@@ -156,10 +212,48 @@ def tokenize_query(text):
     return re.findall(r"\w+", text.lower())
 
 
-def score_document(doc_id, query_terms):
+def normalize_query_terms(query_terms):
+    normalized_terms = []
+    seen = set()
+
+    for term in query_terms:
+        candidate_terms = [term]
+        if len(term) > 4 and term.endswith("s"):
+            candidate_terms.append(term[:-1])
+        if len(term) > 5 and term.endswith("ing"):
+            candidate_terms.append(term[:-3])
+
+        for candidate in candidate_terms:
+            cleaned = candidate.strip()
+            if len(cleaned) < 2 or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            normalized_terms.append(cleaned)
+
+    return normalized_terms
+
+
+def build_query_profile(query):
+    raw_terms = tokenize_query(query)
+    meaningful_terms = [
+        term for term in raw_terms
+        if term not in NATURAL_LANGUAGE_STOPWORDS or len(raw_terms) <= 2
+    ]
+    normalized_terms = normalize_query_terms(meaningful_terms or raw_terms)
+    phrase = " ".join(meaningful_terms or raw_terms).strip()
+
+    return {
+        "raw_terms": raw_terms,
+        "terms": normalized_terms,
+        "phrase": phrase,
+    }
+
+
+def score_document(doc_id, query_terms, query_phrase=""):
     doc = docs[doc_id]
     title = doc["title"].lower()
     url = doc["url"].lower()
+    content = doc["content"].lower()
     content_terms = doc_terms[doc_id]
     web_settings = relevance_settings["web"]
 
@@ -179,17 +273,24 @@ def score_document(doc_id, query_terms):
     exact_title_bonus = (
         web_settings["exactTitleBonus"] if " ".join(query_terms) in title else 0
     )
+    phrase_bonus = 0
+    if query_phrase:
+        if query_phrase in title:
+            phrase_bonus += web_settings["exactTitleBonus"]
+        if query_phrase in content:
+            phrase_bonus += web_settings["coverageBonus"]
 
     return (
         title_score
         + url_score
         + exact_title_bonus
+        + phrase_bonus
         + term_frequency_score
         + (coverage_score * web_settings["coverageBonus"])
     )
 
 
-def score_image(image_id, query_terms):
+def score_image(image_id, query_terms, query_phrase=""):
     image = image_records[image_id]
     image_counter = image_terms[image_id]
     alt_text = image["alt"].lower()
@@ -214,11 +315,18 @@ def score_image(image_id, query_terms):
         * image_settings["sourceUrlWeight"]
     )
     coverage_score = sum(1 for term in query_terms if image_counter[term] > 0)
+    phrase_bonus = 0
+    if query_phrase:
+        if query_phrase in alt_text:
+            phrase_bonus += image_settings["altWeight"]
+        if query_phrase in page_title:
+            phrase_bonus += image_settings["pageTitleWeight"]
 
     return (
         alt_score
         + page_title_score
         + source_score
+        + phrase_bonus
         + term_frequency_score
         + (coverage_score * image_settings["imageCoverageBonus"])
     )
@@ -283,7 +391,9 @@ def search():
             }
         )
 
-    query_terms = tokenize_query(query)
+    query_profile = build_query_profile(query)
+    query_terms = query_profile["terms"]
+    query_phrase = query_profile["phrase"]
     if not query_terms:
         return jsonify(
             {
@@ -305,7 +415,7 @@ def search():
         ranked_image_ids = sorted(
             matched_image_ids,
             key=lambda image_id: (
-                score_image(image_id, query_terms),
+                score_image(image_id, query_terms, query_phrase),
                 sum(image_terms[image_id][term] for term in query_terms),
             ),
             reverse=True,
@@ -326,7 +436,7 @@ def search():
                     "title": image["alt"] or image["pageTitle"],
                     "pageTitle": image["pageTitle"],
                     "sourcePage": image["sourcePage"],
-                    "score": score_image(image_id, query_terms),
+                    "score": score_image(image_id, query_terms, query_phrase),
                 }
             )
 
@@ -351,7 +461,7 @@ def search():
     ranked_doc_ids = sorted(
         matched_doc_ids,
         key=lambda doc_id: (
-            score_document(doc_id, query_terms),
+            score_document(doc_id, query_terms, query_phrase),
             sum(doc_terms[doc_id][term] for term in query_terms),
         ),
         reverse=True,
@@ -370,7 +480,7 @@ def search():
             "title": doc["title"],
             "snippet": build_snippet(doc["content"], query_terms),
             "url": doc["url"],
-            "score": score_document(doc_id, query_terms),
+            "score": score_document(doc_id, query_terms, query_phrase),
         })
 
     search_time_ms = round((perf_counter() - started_at) * 1000, 2)
